@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>加班工时计算器</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      color: #1a202c;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 28px 32px;
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+    }
+    .header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: 0.02em; }
+    .header p  { margin-top: 4px; font-size: 0.9rem; opacity: 0.85; }
+
+    /* ── Main layout ── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+
+    /* ── Rule card ── */
+    .rule-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      border-left: 4px solid #667eea;
+    }
+    .rule-card h3 { font-size: 0.95rem; font-weight: 600; color: #553c9a; margin-bottom: 10px; }
+    .rule-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .rule-tag {
+      background: #f3f0ff;
+      color: #553c9a;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      border: 1px solid #e9d8fd;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      background: #fff;
+      border: 2.5px dashed #c3c8f0;
+      border-radius: 16px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s;
+      margin-bottom: 28px;
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: #667eea;
+      background: #f7f5ff;
+      box-shadow: 0 0 0 4px rgba(102,126,234,0.12);
+    }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-icon { font-size: 3rem; margin-bottom: 12px; }
+    .upload-zone h2 { font-size: 1.1rem; font-weight: 600; color: #4a5568; }
+    .upload-zone p  { margin-top: 6px; color: #718096; font-size: 0.85rem; }
+    .upload-badge {
+      display: inline-block;
+      background: #ebf4ff;
+      color: #3182ce;
+      font-size: 0.78rem;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-top: 10px;
+      border: 1px solid #bee3f8;
+    }
+
+    /* ── Summary cards ── */
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .summary-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.07);
+      transition: transform 0.2s;
+    }
+    .summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+    .summary-card .label { font-size: 0.8rem; color: #718096; margin-bottom: 8px; font-weight: 500; }
+    .summary-card .value { font-size: 2rem; font-weight: 700; }
+    .card-purple .value { color: #553c9a; }
+    .card-blue   .value { color: #2b6cb0; }
+    .card-green  .value { color: #276749; }
+    .card-orange .value { color: #c05621; }
+    .summary-card .unit  { font-size: 1rem; font-weight: 400; margin-left: 3px; color: #718096; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 1px 8px rgba(0,0,0,.07);
+      overflow: hidden;
+    }
+    .table-header-bar {
+      padding: 16px 22px;
+      background: #fafafa;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .table-header-bar h2 { font-size: 1rem; font-weight: 600; color: #2d3748; }
+    .filter-bar { display: flex; gap: 8px; }
+    .filter-btn {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1.5px solid #e2e8f0;
+      background: #fff;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #4a5568;
+      transition: all 0.15s;
+    }
+    .filter-btn.active, .filter-btn:hover {
+      background: #667eea;
+      border-color: #667eea;
+      color: #fff;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    thead th {
+      background: #f7fafc;
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #f0f4f8; transition: background 0.12s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #f7f5ff; }
+    tbody td { padding: 11px 14px; vertical-align: middle; }
+
+    .date-cell strong { display: block; font-size: 0.9rem; }
+    .date-cell span   { font-size: 0.75rem; color: #a0aec0; }
+    .weekend-row { background: #fffdf7; }
+    .weekend-row:hover { background: #fef5e7; }
+
+    .time-badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 5px;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .time-in  { background: #e6fffa; color: #234e52; }
+    .time-out { background: #ebf8ff; color: #2c5282; }
+    .time-miss{ background: #fff5f5; color: #c53030; }
+
+    .ot-pill {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 20px;
+      font-size: 0.83rem;
+      font-weight: 600;
+    }
+    .ot-zero { background: #f0fff4; color: #276749; }
+    .ot-low  { background: #ebf8ff; color: #2b6cb0; }
+    .ot-mid  { background: #faf5ff; color: #553c9a; }
+    .ot-high { background: #fff5f5; color: #c53030; }
+
+    .status-normal { color: #276749; }
+    .status-warn   { color: #c05621; }
+    .status-miss   { color: #c53030; }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 60px 20px; color: #a0aec0; }
+    .empty-state .icon { font-size: 3.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.95rem; }
+
+    /* ── Error toast ── */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #e53e3e;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 20px rgba(229,62,62,0.4);
+      z-index: 9999;
+      transition: transform 0.3s;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .header h1 { font-size: 1.3rem; }
+      .summary-row { grid-template-columns: repeat(2, 1fr); }
+      table { font-size: 0.8rem; }
+      thead th, tbody td { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⏱ 加班工时计算器</h1>
+  <p>导入公司打卡导出表，自动按弹性工时规则计算累计加班时长</p>
+</div>
+
+<div class="container">
+
+  <!-- 计算规则说明 -->
+  <div class="rule-card">
+    <h3>📋 计算规则</h3>
+    <div class="rule-list">
+      <span class="rule-tag">标准上班：08:30</span>
+      <span class="rule-tag">弹性窗口：最晚 09:00 上班</span>
+      <span class="rule-tag">应下班时间 = 18:00 + 弹性延迟</span>
+      <span class="rule-tag">加班起算 = 应下班时间 + 30 分钟</span>
+      <span class="rule-tag">当日工时 &lt; 8h → 加班 = 0</span>
+      <span class="rule-tag">打卡缺失 → 加班 = 0</span>
+    </div>
+  </div>
+
+  <!-- 上传区域 -->
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <div class="upload-icon">📂</div>
+    <h2>拖拽或点击上传打卡导出文件</h2>
+    <p>支持公司 <strong>打卡_日报_*.xlsx</strong> 格式文件</p>
+    <span class="upload-badge">.xlsx / .xls</span>
+  </div>
+
+  <!-- 汇总卡片（默认隐藏） -->
+  <div class="summary-row" id="summaryRow" style="display:none">
+    <div class="summary-card card-purple">
+      <div class="label">累计加班</div>
+      <div class="value" id="totalOT">0<span class="unit">h</span></div>
+    </div>
+    <div class="summary-card card-blue">
+      <div class="label">统计天数</div>
+      <div class="value" id="totalDays">0<span class="unit">天</span></div>
+    </div>
+    <div class="summary-card card-green">
+      <div class="label">有加班天数</div>
+      <div class="value" id="otDays">0<span class="unit">天</span></div>
+    </div>
+    <div class="summary-card card-orange">
+      <div class="label">日均加班</div>
+      <div class="value" id="avgOT">0<span class="unit">h</span></div>
+    </div>
+  </div>
+
+  <!-- 数据表格 -->
+  <div class="table-wrap">
+    <div class="table-header-bar">
+      <h2 id="tableTitle">导入文件后显示明细</h2>
+      <div class="filter-bar" id="filterBar" style="display:none">
+        <button class="filter-btn active" onclick="filterTable('all', this)">全部</button>
+        <button class="filter-btn" onclick="filterTable('ot', this)">有加班</button>
+        <button class="filter-btn" onclick="filterTable('noOT', this)">无加班</button>
+      </div>
+    </div>
+
+    <div id="tableContent">
+      <div class="empty-state">
+        <div class="icon">📊</div>
+        <p>请上传打卡导出文件以查看明细</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ──────────────────────────────────────────────
+//  工具函数
+// ──────────────────────────────────────────────
+function toMinutes(timeStr) {
+  if (!timeStr) return null;
+  const s = timeStr.toString().trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return parseInt(m[1]) * 60 + parseInt(m[2]);
+}
+
+function fromMinutes(mins) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function isMissing(v) {
+  if (v === null || v === undefined) return true;
+  const s = v.toString().trim();
+  return s === '' || s === '--' || s === '未打' || s === '缺卡';
+}
+
+/**
+ * 核心：计算单日加班时长（分钟）
+ * @param {string} checkIn   - 上班打卡，如 "08:49"
+ * @param {string} checkOut  - 下班打卡，如 "19:45"
+ * @param {number|*} actualH - 实际出勤小时数（Excel 列 L）
+ * @returns {{ otMins, requiredEnd, otStart, valid }}
+ */
+function calcOT(checkIn, checkOut, actualH) {
+  const result = { otMins: 0, requiredEnd: null, otStart: null, valid: false };
+
+  if (isMissing(checkIn) || isMissing(checkOut)) return result;
+
+  const inMins  = toMinutes(checkIn);
+  const outMins = toMinutes(checkOut);
+  if (inMins === null || outMins === null) return result;
+
+  // 实际出勤不足 8 小时则不计加班
+  const ah = parseFloat(actualH);
+  if (isNaN(ah) || ah < 8) return result;
+
+  // 弹性规则：08:30 基准，最多弹 30 分钟（到 09:00）
+  const BASE_START = 8 * 60 + 30;  // 510
+  const BASE_END   = 18 * 60;      // 1080
+  const MAX_FLEX   = 30;
+
+  const flexDelay  = Math.max(0, Math.min(inMins - BASE_START, MAX_FLEX));
+  const requiredEnd = BASE_END + flexDelay;
+  const otStart     = requiredEnd + 30;
+
+  const otMins = Math.max(0, outMins - otStart);
+
+  result.otMins     = otMins;
+  result.requiredEnd = requiredEnd;
+  result.otStart     = otStart;
+  result.valid       = true;
+  return result;
+}
+
+// ──────────────────────────────────────────────
+//  解析 Excel
+// ──────────────────────────────────────────────
+function parseExcel(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb   = XLSX.read(data, { type: 'array', codepage: 936 });
+
+        // 优先找「统计」sheet，否则用第一个
+        let sheetName = wb.SheetNames[0];
+        for (const n of wb.SheetNames) {
+          if (n.includes('统计') || n.includes('日报') || n.includes('详情')) {
+            sheetName = n; break;
+          }
+        }
+
+        const ws   = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        // 找数据起始行（第一列包含日期格式 yyyy/mm/dd 的行）
+        let dataStart = -1;
+        for (let i = 0; i < rows.length; i++) {
+          const cell = (rows[i][0] || '').toString();
+          if (/^\d{4}\/\d{2}\/\d{2}/.test(cell)) { dataStart = i; break; }
+        }
+        if (dataStart === -1) {
+          reject(new Error('未找到有效数据行，请确认上传的是正确的打卡导出文件'));
+          return;
+        }
+
+        // 找表头行（包含"上班"/"下班"/"实际"字样）
+        // 默认列索引（与样例文件一致）
+        let colIn = 7, colOut = 8, colActual = 11;
+        for (let i = 0; i < dataStart; i++) {
+          const row = rows[i];
+          for (let j = 0; j < row.length; j++) {
+            const v = (row[j] || '').toString();
+            if (v === '上班' && colIn  === 7)  colIn  = j;
+            if (v === '下班' && colOut === 8)  colOut = j;
+            if (v.includes('实际出勤') && v.includes('时'))  colActual = j;
+          }
+        }
+
+        const records = [];
+        for (let i = dataStart; i < rows.length; i++) {
+          const row = rows[i];
+          const dateRaw = (row[0] || '').toString().trim();
+          if (!dateRaw || !/^\d{4}\/\d{2}\/\d{2}/.test(dateRaw)) continue;
+
+          const datePart = dateRaw.substring(0, 10);
+          const weekPart = dateRaw.substring(11).trim();
+
+          const checkIn  = (row[colIn]  || '').toString().trim();
+          const checkOut = (row[colOut] || '').toString().trim();
+          const actualH  = row[colActual];
+
+          records.push({ datePart, weekPart, checkIn, checkOut, actualH });
+        }
+
+        resolve(records);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ──────────────────────────────────────────────
+//  渲染
+// ──────────────────────────────────────────────
+let allRows = [];
+let currentFilter = 'all';
+
+function otClass(ot) {
+  if (ot === 0) return 'ot-zero';
+  if (ot < 1)   return 'ot-low';
+  if (ot < 2)   return 'ot-mid';
+  return 'ot-high';
+}
+
+function renderTable(rows) {
+  if (!rows.length) {
+    document.getElementById('tableContent').innerHTML =
+      '<div class="empty-state"><div class="icon">🔍</div><p>暂无匹配数据</p></div>';
+    return;
+  }
+
+  const isWeekend = w => w.includes('周六') || w.includes('周日') ||
+                         w.includes('星期六') || w.includes('星期日');
+
+  let html = `
+    <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>上班打卡</th>
+          <th>下班打卡</th>
+          <th>实际出勤</th>
+          <th>应下班时间</th>
+          <th>加班起算</th>
+          <th>加班时长</th>
+          <th>备注</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  for (const r of rows) {
+    const { datePart, weekPart, checkIn, checkOut, actualH, _ot, _req, _otS } = r;
+    const weekend = isWeekend(weekPart);
+    const rowClass = weekend ? 'weekend-row' : '';
+
+    const inBadge  = isMissing(checkIn)
+      ? `<span class="time-badge time-miss">未打卡</span>`
+      : `<span class="time-badge time-in">${checkIn}</span>`;
+
+    const outBadge = isMissing(checkOut)
+      ? `<span class="time-badge time-miss">未打卡</span>`
+      : `<span class="time-badge time-out">${checkOut}</span>`;
+
+    const actualStr = (typeof actualH === 'number' && !isNaN(actualH))
+      ? `${actualH} h` : (actualH || '--');
+
+    const reqStr  = _req  !== null ? fromMinutes(_req)  : '--';
+    const otSStr  = _otS  !== null ? fromMinutes(_otS)  : '--';
+
+    const otHours = _ot / 60;
+    const otLabel = otHours === 0
+      ? `<span class="ot-pill ot-zero">0 h</span>`
+      : `<span class="ot-pill ${otClass(otHours)}">${otHours.toFixed(1)} h</span>`;
+
+    let remark = '';
+    if (weekend) remark = '<span style="color:#a0aec0;font-size:.78rem">周末</span>';
+    else if (isMissing(checkIn) || isMissing(checkOut)) remark = '<span style="color:#c53030;font-size:.78rem">打卡缺失</span>';
+    else if (parseFloat(actualH) < 8) remark = '<span style="color:#c05621;font-size:.78rem">工时不足8h</span>';
+    else remark = '<span style="color:#276749;font-size:.78rem">正常</span>';
+
+    html += `
+      <tr class="${rowClass}" data-ot="${otHours}">
+        <td class="date-cell">
+          <strong>${datePart}</strong>
+          <span>${weekPart}</span>
+        </td>
+        <td>${inBadge}</td>
+        <td>${outBadge}</td>
+        <td>${actualStr}</td>
+        <td style="color:#553c9a;font-weight:500">${reqStr}</td>
+        <td style="color:#2b6cb0;font-weight:500">${otSStr}</td>
+        <td>${otLabel}</td>
+        <td>${remark}</td>
+      </tr>
+    `;
+  }
+
+  html += '</tbody></table></div>';
+  document.getElementById('tableContent').innerHTML = html;
+}
+
+function updateSummary(processed) {
+  const totalDays = processed.length;
+  const totalOTMins = processed.reduce((s, r) => s + r._ot, 0);
+  const otDays  = processed.filter(r => r._ot > 0).length;
+  const totalOTH = totalOTMins / 60;
+  const avgOTH  = otDays > 0 ? totalOTH / otDays : 0;
+
+  document.getElementById('totalOT').innerHTML  = `${totalOTH.toFixed(1)}<span class="unit">h</span>`;
+  document.getElementById('totalDays').innerHTML = `${totalDays}<span class="unit">天</span>`;
+  document.getElementById('otDays').innerHTML    = `${otDays}<span class="unit">天</span>`;
+  document.getElementById('avgOT').innerHTML     = `${avgOTH.toFixed(1)}<span class="unit">h</span>`;
+  document.getElementById('summaryRow').style.display = '';
+}
+
+function applyFilter(filter) {
+  let rows = allRows;
+  if (filter === 'ot')   rows = allRows.filter(r => r._ot > 0);
+  if (filter === 'noOT') rows = allRows.filter(r => r._ot === 0);
+  renderTable(rows);
+}
+
+function filterTable(type, btn) {
+  currentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter(type);
+}
+
+// ──────────────────────────────────────────────
+//  处理文件
+// ──────────────────────────────────────────────
+async function handleFile(file) {
+  if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    showToast('请上传 .xlsx 或 .xls 格式的文件');
+    return;
+  }
+
+  try {
+    const records = await parseExcel(file);
+    if (!records.length) {
+      showToast('未解析到有效数据，请确认文件格式');
+      return;
+    }
+
+    // 计算每行加班
+    allRows = records.map(r => {
+      const { otMins, requiredEnd, otStart } = calcOT(r.checkIn, r.checkOut, r.actualH);
+      return { ...r, _ot: otMins, _req: requiredEnd, _otS: otStart };
+    });
+
+    updateSummary(allRows);
+    document.getElementById('tableTitle').textContent =
+      `打卡明细（共 ${allRows.length} 条，文件：${file.name}）`;
+    document.getElementById('filterBar').style.display = '';
+
+    // 重置过滤
+    currentFilter = 'all';
+    document.querySelectorAll('.filter-btn').forEach((b, i) => {
+      b.classList.toggle('active', i === 0);
+    });
+    renderTable(allRows);
+
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || '解析文件时发生错误');
+  }
+}
+
+// ──────────────────────────────────────────────
+//  事件绑定
+// ──────────────────────────────────────────────
+const zone  = document.getElementById('uploadZone');
+const input = document.getElementById('fileInput');
+
+input.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+zone.addEventListener('dragover', e => {
+  e.preventDefault();
+  zone.classList.add('drag-over');
+});
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+// ──────────────────────────────────────────────
+//  Toast
+// ──────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
